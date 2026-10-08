@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  .bg-stars {
+    background-image: radial-gradient(circle at center, #ffffff 1px, transparent 1px);
+    background-size: 50px 50px;
+    opacity: 0.1;
+  }
+}
