@@ -1,24 +1,33 @@
 import { Request, Response, NextFunction } from 'express';
-import Prediction from '../models/Prediction';
+import { supabase } from '../config/supabase';
 import { GoogleGenAI } from '@google/genai';
 
 export const createPrediction = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { firstName, lastName, birthDate, birthPlace, birthTime } = req.body;
     
-    const newPrediction = await Prediction.create({
-      firstName,
-      lastName,
-      birthDate,
-      birthPlace,
-      birthTime,
-      status: 'processing'
-    });
+    // Insert into Supabase
+    const { data: newPrediction, error } = await supabase
+      .from('predictions')
+      .insert([
+        {
+          first_name: firstName,
+          last_name: lastName,
+          birth_date: birthDate,
+          birth_place: birthPlace,
+          birth_time: birthTime,
+          status: 'processing'
+        }
+      ])
+      .select()
+      .single();
 
-    res.status(202).json({ success: true, data: { id: newPrediction._id } });
+    if (error) throw error;
+
+    res.status(202).json({ success: true, data: { id: newPrediction.id } });
 
     // Process asynchronously
-    generatePrediction(newPrediction._id.toString(), newPrediction);
+    generatePrediction(newPrediction.id, req.body);
 
   } catch (error) {
     next(error);
@@ -85,29 +94,54 @@ const generatePrediction = async (id: string, data: any) => {
       throw lastError || new Error('All models failed to generate a prediction.');
     }
 
-    await Prediction.findByIdAndUpdate(id, {
-      prediction: result,
-      status: 'completed',
-      openAIModel: successfulModel
-    });
+    await supabase
+      .from('predictions')
+      .update({
+        prediction: result,
+        status: 'completed',
+        open_ai_model: successfulModel
+      })
+      .eq('id', id);
 
   } catch (error: any) {
     console.error('Prediction Generation Error:', error);
-    await Prediction.findByIdAndUpdate(id, {
-      status: 'failed',
-      errorMessage: error.message
-    });
+    await supabase
+      .from('predictions')
+      .update({
+        status: 'failed',
+        error_message: error.message || 'An unknown error occurred during generation'
+      })
+      .eq('id', id);
   }
 };
 
 export const getPrediction = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const prediction = await Prediction.findById(req.params.id);
-    if (!prediction) {
+    const { id } = req.params;
+
+    const { data: prediction, error } = await supabase
+      .from('predictions')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error || !prediction) {
       res.status(404).json({ success: false, message: 'Prediction not found' });
       return;
     }
-    res.json({ success: true, data: prediction });
+
+    // Map database fields back to frontend expected structure
+    const formattedData = {
+      ...prediction,
+      firstName: prediction.first_name,
+      lastName: prediction.last_name,
+      birthDate: prediction.birth_date,
+      birthPlace: prediction.birth_place,
+      birthTime: prediction.birth_time,
+      openAIModel: prediction.open_ai_model
+    };
+
+    res.json({ success: true, data: formattedData });
   } catch (error) {
     next(error);
   }

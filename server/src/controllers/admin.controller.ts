@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import Prediction from '../models/Prediction';
+import { supabase } from '../config/supabase';
 
 export const loginAdmin = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
@@ -18,10 +18,28 @@ export const loginAdmin = async (req: Request, res: Response, next: NextFunction
   }
 };
 
+const mapDatabaseRow = (prediction: any) => ({
+  ...prediction,
+  firstName: prediction.first_name,
+  lastName: prediction.last_name,
+  birthDate: prediction.birth_date,
+  birthPlace: prediction.birth_place,
+  birthTime: prediction.birth_time,
+  openAIModel: prediction.open_ai_model,
+  createdAt: prediction.created_at
+});
+
 export const getPredictions = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const predictions = await Prediction.find().sort({ createdAt: -1 });
-    res.json({ success: true, data: predictions });
+    const { data: predictions, error } = await supabase
+      .from('predictions')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    const mapped = predictions.map(mapDatabaseRow);
+    res.json({ success: true, data: mapped });
   } catch (error) {
     next(error);
   }
@@ -29,12 +47,18 @@ export const getPredictions = async (req: Request, res: Response, next: NextFunc
 
 export const getPredictionById = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const prediction = await Prediction.findById(req.params.id);
-    if (!prediction) {
+    const { data: prediction, error } = await supabase
+      .from('predictions')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
+
+    if (error || !prediction) {
       res.status(404).json({ success: false, message: 'Not found' });
       return;
     }
-    res.json({ success: true, data: prediction });
+    
+    res.json({ success: true, data: mapDatabaseRow(prediction) });
   } catch (error) {
     next(error);
   }
