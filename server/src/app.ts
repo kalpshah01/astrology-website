@@ -13,6 +13,10 @@ app.use(helmet());
 app.use(cors());
 app.use(express.json());
 
+app.get('/', (req, res) => {
+  res.send('Astrology API is running!');
+});
+
 app.use('/api/predictions', predictionRoutes);
 app.use('/api/admin', adminRoutes);
 
